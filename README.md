@@ -1,8 +1,13 @@
 # Port Killer - Cross-Platform Port Manager
 
+[![Build Release](https://github.com/dannguyen2299/Port-Killer/actions/workflows/release.yml/badge.svg)](https://github.com/dannguyen2299/Port-Killer/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 Port Killer is a cross-platform port manager for developers who need to find and kill processes using a port. It helps you inspect listening ports, kill a process by PID, and stop Docker containers that own a port on Ubuntu/Linux, macOS, and Windows.
 
 Use it when you hit errors like `EADDRINUSE`, `address already in use`, `port 3000 is already in use`, or Docker containers conflicting on the same port.
+
+![Port Killer screenshot](assets/screenshot.png)
 
 ## Features
 
@@ -14,6 +19,20 @@ Use it when you hit errors like `EADDRINUSE`, `address already in use`, `port 30
 - Stop Docker containers with `docker stop`.
 - Package into a single executable per operating system.
 
+## Download
+
+Download prebuilt binaries from GitHub Releases:
+
+- `port-killer-linux`
+- `port-killer-macos`
+- `port-killer-windows.exe`
+
+The Linux binary currently built in this repository is available at:
+
+```text
+dist/port-killer-ubuntu
+```
+
 ## Common Use Cases
 
 - Find what is using port `3000`, `5000`, `8000`, `8080`, or any local development port.
@@ -21,6 +40,28 @@ Use it when you hit errors like `EADDRINUSE`, `address already in use`, `port 30
 - Stop Docker containers that publish a conflicting port.
 - Inspect local listening ports from a simple browser-based UI.
 - Share a single executable with teammates who do not want to install dependencies.
+
+## Quick Start
+
+Linux:
+
+```bash
+chmod +x port-killer-linux
+./port-killer-linux
+```
+
+macOS:
+
+```bash
+chmod +x port-killer-macos
+./port-killer-macos
+```
+
+Windows:
+
+```powershell
+.\port-killer-windows.exe
+```
 
 ## Run From Source
 
@@ -121,6 +162,17 @@ Run:
 ```
 
 Double-clicking the `.exe` also works.
+
+## Release
+
+Create and push a version tag to trigger the GitHub Actions release workflow:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The workflow builds Linux, macOS, and Windows executables and uploads them to the GitHub Release.
 
 ## Notes
 
