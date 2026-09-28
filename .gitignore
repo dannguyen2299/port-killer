@@ -1,0 +1,9 @@
+__pycache__/
+*.py[cod]
+build/
+*.spec
+.DS_Store
+Thumbs.db
+.venv/
+venv/
+env/
