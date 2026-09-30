@@ -380,6 +380,11 @@
         <option value="container">With container</option>
         <option value="plain">Without container</option>
       </select>
+      <select id="portSort" aria-label="Sort order">
+        <option value="newest">Newest first</option>
+        <option value="oldest">Oldest first</option>
+        <option value="port">Port number</option>
+      </select>
     </section>
 
     <div class="notice" id="notice"></div>
@@ -479,6 +484,7 @@
       searchInput: document.querySelector("#searchInput"),
       protocolFilter: document.querySelector("#protocolFilter"),
       containerFilter: document.querySelector("#containerFilter"),
+      portSort: document.querySelector("#portSort"),
       portCount: document.querySelector("#portCount"),
       processCount: document.querySelector("#processCount"),
       containerCount: document.querySelector("#containerCount"),
@@ -554,6 +560,19 @@
 
     function renderPorts() {
       const rows = state.listeners.filter(matchesPortFilters);
+      const sortMode = els.portSort.value;
+      if (sortMode !== "port") {
+        const dir = sortMode === "newest" ? -1 : 1;
+        // Unknown start time (no visible PID) always goes last.
+        const key = item => item.startedAt == null ? null : item.startedAt;
+        rows.sort((a, b) => {
+          const ka = key(a), kb = key(b);
+          if (ka === null && kb === null) return a.port - b.port;
+          if (ka === null) return 1;
+          if (kb === null) return -1;
+          return (ka - kb) * dir || a.port - b.port;
+        });
+      }
       const pidCount = new Set(state.listeners.filter(item => item.pid).map(item => item.pid)).size;
 
       els.portCount.textContent = new Set(state.listeners.map(item => item.port)).size;
@@ -814,6 +833,7 @@
     els.searchInput.addEventListener("input", renderPorts);
     els.protocolFilter.addEventListener("change", renderPorts);
     els.containerFilter.addEventListener("change", renderPorts);
+    els.portSort.addEventListener("change", renderPorts);
     els.tabs.forEach(tab => tab.addEventListener("click", () => switchView(tab.dataset.view)));
     function updateCatalogFilters() {
       const applications = els.packageKind.value === "applications";

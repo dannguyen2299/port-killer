@@ -3,6 +3,7 @@ import json
 import os
 import platform
 import re
+import calendar
 import configparser
 import plistlib
 import signal
@@ -11,6 +12,7 @@ import errno
 import subprocess
 import sys
 import threading
+import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -235,16 +237,86 @@ def get_docker_ports():
     return containers
 
 
+def parse_etime(text):
+    days = 0
+    if "-" in text:
+        day_text, text = text.split("-", 1)
+        days = int(day_text)
+    parts = [int(part) for part in text.split(":")]
+    while len(parts) < 3:
+        parts.insert(0, 0)
+    hours, minutes, seconds = parts
+    return ((days * 24 + hours) * 60 + minutes) * 60 + seconds
+
+
+def get_process_start_times(pids):
+    pids = sorted({pid for pid in pids if pid})
+    if not pids:
+        return {}
+
+    starts = {}
+    if SYSTEM == "windows":
+        script = (
+            "Get-Process -Id %s -ErrorAction SilentlyContinue | ForEach-Object "
+            "{ '{0} {1}' -f $_.Id, ([DateTimeOffset]$_.StartTime).ToUnixTimeSeconds() }"
+        ) % ",".join(str(pid) for pid in pids)
+        proc = run_command(["powershell", "-NoProfile", "-Command", script], timeout=10)
+        if proc and proc.returncode == 0:
+            for line in proc.stdout.splitlines():
+                fields = line.split()
+                if len(fields) == 2 and fields[0].isdigit() and fields[1].isdigit():
+                    starts[int(fields[0])] = int(fields[1])
+        return starts
+
+    proc = run_command(["ps", "-o", "pid=,etime=", "-p", ",".join(str(pid) for pid in pids)])
+    if proc and proc.stdout:
+        now = int(time.time())
+        for line in proc.stdout.splitlines():
+            fields = line.split()
+            if len(fields) == 2 and fields[0].isdigit():
+                try:
+                    starts[int(fields[0])] = now - parse_etime(fields[1])
+                except ValueError:
+                    continue
+    return starts
+
+
+def get_container_start_times(ids):
+    if not ids:
+        return {}
+    proc = run_command(["docker", "inspect", "--format", "{{.Id}} {{.State.StartedAt}}", *ids])
+    starts = {}
+    if not proc or not proc.stdout:
+        return starts
+    for line in proc.stdout.splitlines():
+        container_id, _, started = line.partition(" ")
+        match = re.match(r"(\d{4})-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)(\.\d+)?", started)
+        if not match:
+            continue
+        stamp = calendar.timegm(tuple(int(part) for part in match.groups()[:6]) + (0, 0, 0))
+        stamp += float(match.group(7) or 0)
+        starts[container_id[:12]] = stamp
+    return starts
+
+
 def build_snapshot():
     listeners = get_listeners()
+    start_times = get_process_start_times(item.get("pid") for item in listeners)
+    for listener in listeners:
+        listener["startedAt"] = start_times.get(listener.get("pid"))
     containers = get_docker_ports()
     containers_by_port = {}
     for container in containers:
         for port in container["ports"]:
             containers_by_port.setdefault(port["publicPort"], []).append(container)
 
+    container_starts = get_container_start_times([c["id"] for c in containers])
     for listener in listeners:
         listener["containers"] = containers_by_port.get(listener["port"], [])
+        # A published container port is "opened" when the container starts.
+        started = [container_starts[c["id"]] for c in listener["containers"] if c["id"] in container_starts]
+        if started:
+            listener["startedAt"] = max(started)
 
     return {"listeners": listeners, "containers": containers}
 
