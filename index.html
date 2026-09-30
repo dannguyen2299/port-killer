@@ -116,6 +116,8 @@
       margin-bottom: 16px;
     }
 
+    .stats.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
     .stat, .panel {
       background: var(--panel);
       border: 1px solid var(--line);
@@ -212,14 +214,102 @@
       color: var(--muted);
     }
 
+    .top-actions, .tabs, .pagination, .package-name {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tabs {
+      padding: 0 clamp(16px, 4vw, 48px);
+      border-bottom: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .tab {
+      min-width: 0;
+      height: 46px;
+      padding: 0 4px;
+      margin-right: 20px;
+      border: 0;
+      border-bottom: 3px solid transparent;
+      border-radius: 0;
+      background: transparent;
+      color: var(--muted);
+    }
+
+    .tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .view[hidden] { display: none; }
+
+    .package-toolbar {
+      grid-template-columns: minmax(220px, 1fr) auto auto auto;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 22px;
+      padding: 1px 7px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #f8fafc;
+      color: #475467;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+
+    .badge.update {
+      color: #8a4b00;
+      background: #fff7e6;
+      border-color: #efd29d;
+    }
+
+    .package-description {
+      max-width: 460px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .version {
+      max-width: 230px;
+      overflow-wrap: anywhere;
+    }
+
+    .pagination {
+      justify-content: space-between;
+      padding: 12px 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    .pagination button { min-width: 84px; }
+
+    .permission-note {
+      padding: 12px 14px;
+      border: 1px solid #efd29d;
+      border-radius: 8px;
+      background: #fff7e6;
+      color: #754000;
+    }
+
     @media (max-width: 820px) {
       header {
         display: block;
       }
 
-      .toolbar, .stats {
+      .toolbar, .stats, .stats.four, .package-toolbar {
         grid-template-columns: 1fr;
       }
+
+      .stats.four { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+      .top-actions { margin-top: 14px; }
+      .tabs { overflow-x: auto; }
+      .tab { flex: 0 0 auto; }
 
       table, thead, tbody, tr, th, td {
         display: block;
@@ -255,12 +345,20 @@
   <header>
     <div>
       <h1>Port Killer</h1>
-      <p class="subtitle">Inspect listening ports, kill processes, or stop Docker containers that own a port.</p>
+      <p class="subtitle" id="pageSubtitle">Inspect listening ports, processes, and Docker containers.</p>
     </div>
-    <button class="primary" id="refreshBtn">Refresh</button>
+    <div class="top-actions">
+      <button class="primary" id="refreshBtn">Refresh</button>
+    </div>
   </header>
 
+  <nav class="tabs" aria-label="Tools">
+    <button class="tab active" data-view="ports">Ports &amp; Processes</button>
+    <button class="tab" data-view="packages">Apps &amp; Packages</button>
+  </nav>
+
   <main>
+    <div class="view" id="portsView">
     <section class="stats" aria-label="Overview">
       <div class="stat"><b id="portCount">0</b><span>Listening ports</span></div>
       <div class="stat"><b id="processCount">0</b><span>Processes with PIDs</span></div>
@@ -299,11 +397,75 @@
       </table>
       <div class="empty" id="empty" hidden>No services match the current filters.</div>
     </section>
+    </div>
+
+    <div class="view" id="packagesView" hidden>
+      <section class="stats four" aria-label="Software overview">
+        <div class="stat"><b id="appCount">0</b><span>Installed applications</span></div>
+        <div class="stat"><b id="packageCount">0</b><span>Installed packages</span></div>
+        <div class="stat"><b id="libraryCount">0</b><span>Libraries</span></div>
+        <div class="stat"><b id="upgradeCount">0</b><span>Updates available</span></div>
+      </section>
+
+      <div class="permission-note" id="permissionNote" hidden>
+        Browsing is available. To remove packages, restart this app with <span class="mono">sudo</span>.
+      </div>
+
+      <section class="toolbar package-toolbar" aria-label="Package filters">
+        <input id="packageSearch" placeholder="Search applications or packages...">
+        <select id="packageKind" aria-label="Filter package type">
+          <option value="applications">Installed applications</option>
+          <option value="packages">All APT packages</option>
+          <option value="library">Libraries</option>
+          <option value="system">System packages</option>
+        </select>
+        <select id="packageOrigin" aria-label="Filter install origin">
+          <option value="">All sources</option>
+          <option value="apt">APT</option>
+          <option value="snap">Snap</option>
+          <option value="flatpak">Flatpak</option>
+          <option value="manual">Manual</option>
+        </select>
+        <select id="packageUpdates" aria-label="Filter updates" disabled>
+          <option value="">All versions</option>
+          <option value="upgrade">Updates available</option>
+        </select>
+      </section>
+
+      <div class="notice" id="packageNotice"></div>
+
+      <section class="panel">
+        <table>
+          <thead><tr><th id="itemColumn">Application</th><th>Version</th><th id="typeColumn">Source</th><th id="sizeColumn">Package</th><th>Description</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody id="packageBody"></tbody>
+        </table>
+        <div class="empty" id="packageEmpty" hidden>No software matches the current filters.</div>
+        <div class="pagination" id="packagePagination">
+          <button id="previousPage">Previous</button>
+          <span class="muted" id="pageInfo"></span>
+          <button id="nextPage">Next</button>
+        </div>
+      </section>
+    </div>
   </main>
 
   <script>
-    const state = { listeners: [], containers: [] };
+    const PAGE_SIZE = 50;
+    const state = {
+      activeView: "ports",
+      listeners: [],
+      containers: [],
+      packages: [],
+      applications: [],
+      packagesLoaded: false,
+      canManagePackages: false,
+      packagePage: 1
+    };
     const els = {
+      tabs: document.querySelectorAll(".tab"),
+      portsView: document.querySelector("#portsView"),
+      packagesView: document.querySelector("#packagesView"),
+      pageSubtitle: document.querySelector("#pageSubtitle"),
       tbody: document.querySelector("#tbody"),
       empty: document.querySelector("#empty"),
       notice: document.querySelector("#notice"),
@@ -313,12 +475,31 @@
       containerFilter: document.querySelector("#containerFilter"),
       portCount: document.querySelector("#portCount"),
       processCount: document.querySelector("#processCount"),
-      containerCount: document.querySelector("#containerCount")
+      containerCount: document.querySelector("#containerCount"),
+      appCount: document.querySelector("#appCount"),
+      packageCount: document.querySelector("#packageCount"),
+      libraryCount: document.querySelector("#libraryCount"),
+      upgradeCount: document.querySelector("#upgradeCount"),
+      permissionNote: document.querySelector("#permissionNote"),
+      packageSearch: document.querySelector("#packageSearch"),
+      packageKind: document.querySelector("#packageKind"),
+      packageOrigin: document.querySelector("#packageOrigin"),
+      packageUpdates: document.querySelector("#packageUpdates"),
+      packageNotice: document.querySelector("#packageNotice"),
+      packageBody: document.querySelector("#packageBody"),
+      packageEmpty: document.querySelector("#packageEmpty"),
+      packagePagination: document.querySelector("#packagePagination"),
+      previousPage: document.querySelector("#previousPage"),
+      nextPage: document.querySelector("#nextPage"),
+      pageInfo: document.querySelector("#pageInfo"),
+      itemColumn: document.querySelector("#itemColumn"),
+      typeColumn: document.querySelector("#typeColumn"),
+      sizeColumn: document.querySelector("#sizeColumn")
     };
 
-    function setNotice(message, type = "") {
-      els.notice.textContent = message;
-      els.notice.className = `notice ${type}`;
+    function setNotice(message, type = "", target = els.notice) {
+      target.textContent = message;
+      target.className = `notice ${type}`;
     }
 
     function escapeHtml(value) {
@@ -331,7 +512,7 @@
       })[char]);
     }
 
-    function matchesFilters(item) {
+    function matchesPortFilters(item) {
       const search = els.searchInput.value.trim().toLowerCase();
       const protocol = els.protocolFilter.value;
       const containerMode = els.containerFilter.value;
@@ -365,8 +546,8 @@
       `).join("");
     }
 
-    function render() {
-      const rows = state.listeners.filter(matchesFilters);
+    function renderPorts() {
+      const rows = state.listeners.filter(matchesPortFilters);
       const pidCount = new Set(state.listeners.filter(item => item.pid).map(item => item.pid)).size;
 
       els.portCount.textContent = new Set(state.listeners.map(item => item.port)).size;
@@ -399,6 +580,91 @@
       }).join("");
     }
 
+    function formatSize(sizeKb) {
+      if (!sizeKb) return "-";
+      if (sizeKb >= 1048576) return `${(sizeKb / 1048576).toFixed(1)} GB`;
+      if (sizeKb >= 1024) return `${(sizeKb / 1024).toFixed(1)} MB`;
+      return `${sizeKb} KB`;
+    }
+
+    function filteredPackages() {
+      const search = els.packageSearch.value.trim().toLowerCase();
+      const mode = els.packageKind.value;
+      if (mode === "applications") {
+        return state.applications.filter(item => {
+          if (els.packageOrigin.value && item.source !== els.packageOrigin.value) return false;
+          if (!search) return true;
+          return [item.name, item.comment, item.package, item.exec, ...item.categories].join(" ").toLowerCase().includes(search);
+        });
+      }
+      return state.packages.filter(item => {
+        if (mode === "library" && item.kind !== "library") return false;
+        if (mode === "system" && item.kind !== "app") return false;
+        if (els.packageOrigin.value === "manual" && !item.manual) return false;
+        if (els.packageOrigin.value === "automatic" && item.manual) return false;
+        if (els.packageUpdates.value === "upgrade" && !item.upgradeVersion) return false;
+        if (!search) return true;
+        return [item.name, item.summary, item.section, item.version].join(" ").toLowerCase().includes(search);
+      });
+    }
+
+    function renderPackages() {
+      const rows = filteredPackages();
+      const showingApplications = els.packageKind.value === "applications";
+      const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+      state.packagePage = Math.min(state.packagePage, totalPages);
+      const start = (state.packagePage - 1) * PAGE_SIZE;
+      const pageRows = rows.slice(start, start + PAGE_SIZE);
+
+      els.appCount.textContent = state.applications.length;
+      els.packageCount.textContent = state.packages.length;
+      els.libraryCount.textContent = state.packages.filter(item => item.kind === "library").length;
+      els.upgradeCount.textContent = state.packages.filter(item => item.upgradeVersion).length;
+      els.packageEmpty.hidden = rows.length !== 0;
+      els.packagePagination.hidden = rows.length === 0;
+      els.pageInfo.textContent = `${rows.length ? start + 1 : 0}-${Math.min(start + PAGE_SIZE, rows.length)} of ${rows.length}`;
+      els.previousPage.disabled = state.packagePage <= 1;
+      els.nextPage.disabled = state.packagePage >= totalPages;
+
+      els.itemColumn.textContent = showingApplications ? "Application" : "Package";
+      els.typeColumn.textContent = showingApplications ? "Source" : "Type";
+      els.sizeColumn.textContent = showingApplications ? "Package" : "Size";
+
+      if (showingApplications) {
+        els.packageBody.innerHTML = pageRows.map(item => `
+          <tr>
+            <td data-label="Application">
+              <b>${escapeHtml(item.name)}</b>
+              <span class="container-line mono">${escapeHtml(item.id)}</span>
+            </td>
+            <td data-label="Version" class="version mono">${escapeHtml(item.version || "-")}</td>
+            <td data-label="Source"><span class="badge">${escapeHtml(item.source.toUpperCase())}</span><span class="container-line">${escapeHtml(item.categories.slice(0, 2).join(" · ") || "Other")}</span></td>
+            <td data-label="Package" class="mono">${escapeHtml(item.package || "-")}</td>
+            <td data-label="Description" class="package-description">${escapeHtml(item.comment || item.exec || "-")}</td>
+            <td data-label="Actions"><div class="actions">${item.removable ? `<button class="danger" data-remove-package="${escapeHtml(item.package)}" ${state.canManagePackages ? "" : "disabled"}>Remove</button>` : '<span class="muted">-</span>'}</div></td>
+          </tr>
+        `).join("");
+        return;
+      }
+
+      els.packageBody.innerHTML = pageRows.map(item => `
+        <tr>
+          <td data-label="Package">
+            <div class="package-name"><b class="mono">${escapeHtml(item.name)}</b>${item.upgradeVersion ? '<span class="badge update">Update</span>' : ""}</div>
+            <span class="container-line">${item.manual ? "Manual" : "Dependency"} · ${escapeHtml(item.architecture)}</span>
+          </td>
+          <td data-label="Version" class="version mono">
+            ${escapeHtml(item.version)}
+            ${item.upgradeVersion ? `<span class="container-line">→ ${escapeHtml(item.upgradeVersion)}</span>` : ""}
+          </td>
+          <td data-label="Type"><span class="badge">${item.kind === "library" ? "Library" : "App / system"}</span><span class="container-line">${escapeHtml(item.section)}</span></td>
+          <td data-label="Size">${formatSize(item.installedSizeKb)}</td>
+          <td data-label="Description" class="package-description">${escapeHtml(item.summary || "-")}</td>
+          <td data-label="Actions"><div class="actions"><button class="danger" data-remove-package="${escapeHtml(item.name)}" ${state.canManagePackages ? "" : "disabled"}>Remove</button></div></td>
+        </tr>
+      `).join("");
+    }
+
     async function load() {
       els.refreshBtn.disabled = true;
       setNotice("Scanning ports...");
@@ -408,10 +674,32 @@
         if (!response.ok) throw new Error(data.error || "Could not scan ports");
         state.listeners = data.listeners || [];
         state.containers = data.containers || [];
-        render();
+        renderPorts();
         setNotice(`Updated at ${new Date().toLocaleTimeString()}.`, "ok");
       } catch (error) {
         setNotice(error.message, "error");
+      } finally {
+        els.refreshBtn.disabled = false;
+      }
+    }
+
+    async function loadPackages() {
+      els.refreshBtn.disabled = true;
+      setNotice("Reading installed Ubuntu applications and packages...", "", els.packageNotice);
+      try {
+        const response = await fetch("/api/packages");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not read installed packages");
+        state.packages = data.packages || [];
+        state.applications = data.applications || [];
+        state.packagesLoaded = true;
+        state.canManagePackages = Boolean(data.canManage);
+        state.packagePage = 1;
+        els.permissionNote.hidden = state.canManagePackages;
+        renderPackages();
+        setNotice(`Loaded ${state.applications.length} applications and ${state.packages.length} packages.`, "ok", els.packageNotice);
+      } catch (error) {
+        setNotice(error.message, "error", els.packageNotice);
       } finally {
         els.refreshBtn.disabled = false;
       }
@@ -457,12 +745,77 @@
       }
     });
 
-    els.refreshBtn.addEventListener("click", load);
-    els.searchInput.addEventListener("input", render);
-    els.protocolFilter.addEventListener("change", render);
-    els.containerFilter.addEventListener("change", render);
+    els.packageBody.addEventListener("click", async event => {
+      const button = event.target.closest("[data-remove-package]");
+      if (!button || button.disabled) return;
+      const name = button.dataset.removePackage;
+      button.disabled = true;
+      setNotice(`Checking dependencies for ${name}...`, "", els.packageNotice);
+      try {
+        const preview = await postJson("/api/packages/remove-preview", { name });
+        const affected = preview.removedPackages || [];
+        const details = affected.length
+          ? `This will remove ${affected.length} package(s):\n\n${affected.slice(0, 20).join("\n")}${affected.length > 20 ? `\n...and ${affected.length - 20} more` : ""}`
+          : `Remove ${name}?`;
+        if (!confirm(`${details}\n\nThis action changes your Ubuntu installation.`)) {
+          setNotice("Removal cancelled.", "", els.packageNotice);
+          return;
+        }
+        setNotice(`Removing ${name}. This may take a moment...`, "", els.packageNotice);
+        await postJson("/api/packages/remove", { name });
+        setNotice(`Removed ${name}.`, "ok", els.packageNotice);
+        await loadPackages();
+      } catch (error) {
+        setNotice(error.message, "error", els.packageNotice);
+      } finally {
+        button.disabled = false;
+      }
+    });
 
-    load();
+    function switchView(view) {
+      state.activeView = view;
+      els.portsView.hidden = view !== "ports";
+      els.packagesView.hidden = view !== "packages";
+      els.tabs.forEach(tab => tab.classList.toggle("active", tab.dataset.view === view));
+      els.pageSubtitle.textContent = view === "ports"
+        ? "Inspect listening ports, processes, and Docker containers."
+        : "Browse desktop applications and the packages installed on this Ubuntu system.";
+      if (view === "packages" && !state.packagesLoaded) loadPackages();
+    }
+
+    els.refreshBtn.addEventListener("click", () => state.activeView === "ports" ? load() : loadPackages());
+    els.searchInput.addEventListener("input", renderPorts);
+    els.protocolFilter.addEventListener("change", renderPorts);
+    els.containerFilter.addEventListener("change", renderPorts);
+    els.tabs.forEach(tab => tab.addEventListener("click", () => switchView(tab.dataset.view)));
+    function updateCatalogFilters() {
+      const applications = els.packageKind.value === "applications";
+      els.packageOrigin.innerHTML = applications
+        ? '<option value="">All sources</option><option value="apt">APT</option><option value="snap">Snap</option><option value="flatpak">Flatpak</option><option value="manual">Manual</option>'
+        : '<option value="">Manual &amp; automatic</option><option value="manual">Manually installed</option><option value="automatic">Installed as dependency</option>';
+      els.packageUpdates.disabled = applications;
+      if (applications) els.packageUpdates.value = "";
+      state.packagePage = 1;
+      renderPackages();
+    }
+
+    [els.packageSearch, els.packageOrigin, els.packageUpdates].forEach(control => {
+      const eventName = control.tagName === "INPUT" ? "input" : "change";
+      control.addEventListener(eventName, () => {
+        state.packagePage = 1;
+        renderPackages();
+      });
+    });
+    els.packageKind.addEventListener("change", updateCatalogFilters);
+    els.previousPage.addEventListener("click", () => { state.packagePage -= 1; renderPackages(); });
+    els.nextPage.addEventListener("click", () => { state.packagePage += 1; renderPackages(); });
+
+    const initialView = new URLSearchParams(window.location.search).get("view");
+    if (initialView === "packages") {
+      switchView("packages");
+    } else {
+      load();
+    }
   </script>
 </body>
 </html>

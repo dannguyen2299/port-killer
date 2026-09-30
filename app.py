@@ -3,6 +3,7 @@ import json
 import os
 import platform
 import re
+import configparser
 import signal
 import socket
 import errno
@@ -21,14 +22,15 @@ PORT = int(os.environ.get("PORT", "8765"))
 SYSTEM = platform.system().lower()
 
 
-def run_command(args):
+def run_command(args, timeout=6, env=None):
     try:
         return subprocess.run(
             args,
             capture_output=True,
             check=False,
             text=True,
-            timeout=6,
+            timeout=timeout,
+            env=env,
         )
     except FileNotFoundError:
         return None
@@ -245,6 +247,222 @@ def build_snapshot():
     return {"listeners": listeners, "containers": containers}
 
 
+PACKAGE_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9+.-]*(?::[a-zA-Z0-9]+)?$")
+
+
+def package_base_name(name):
+    return name.split(":", 1)[0]
+
+
+def get_upgradable_packages():
+    proc = run_command(["apt", "list", "--upgradable"], timeout=30)
+    upgrades = {}
+    if not proc or proc.returncode != 0:
+        return upgrades
+
+    pattern = re.compile(r"^(?P<name>[^/]+)/\S+\s+(?P<version>\S+)")
+    for line in proc.stdout.splitlines():
+        match = pattern.match(line.strip())
+        if match:
+            upgrades[package_base_name(match.group("name"))] = match.group("version")
+    return upgrades
+
+
+def get_manual_packages():
+    proc = run_command(["apt-mark", "showmanual"], timeout=30)
+    if not proc or proc.returncode != 0:
+        return set()
+    return {package_base_name(line.strip()) for line in proc.stdout.splitlines() if line.strip()}
+
+
+def get_ubuntu_packages():
+    if SYSTEM != "linux":
+        raise RuntimeError("Package management is currently available on Ubuntu/Linux only")
+
+    query_format = "${binary:Package}\\t${Version}\\t${Architecture}\\t${Installed-Size}\\t${Section}\\t${db:Status-Abbrev}\\t${binary:Summary}\\n"
+    proc = run_command(["dpkg-query", "-W", f"-f={query_format}"], timeout=30)
+    if not proc:
+        raise RuntimeError("Could not find dpkg-query. This feature requires Ubuntu or Debian")
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or "Could not read installed packages")
+
+    manual = get_manual_packages()
+    upgrades = get_upgradable_packages()
+    packages = []
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t", 6)
+        if len(parts) != 7 or not parts[5].startswith("ii"):
+            continue
+        name, version, architecture, size, section, _status, summary = parts
+        base_name = package_base_name(name)
+        is_library = section.startswith("libs") or (base_name.startswith("lib") and not base_name.startswith("libreoffice"))
+        packages.append(
+            {
+                "name": name,
+                "version": version,
+                "architecture": architecture,
+                "installedSizeKb": int(size) if size.isdigit() else 0,
+                "section": section or "unknown",
+                "summary": summary,
+                "kind": "library" if is_library else "app",
+                "manual": base_name in manual,
+                "upgradeVersion": upgrades.get(base_name, ""),
+            }
+        )
+
+    packages.sort(key=lambda item: item["name"].lower())
+    can_manage = hasattr(os, "geteuid") and os.geteuid() == 0
+    return {
+        "packages": packages,
+        "applications": get_installed_applications(packages),
+        "platform": platform.platform(),
+        "canManage": can_manage,
+        "packageManager": "apt/dpkg",
+    }
+
+
+def get_desktop_package_owners():
+    proc = run_command(["dpkg-query", "-S", "/usr/share/applications/*.desktop"], timeout=30)
+    owners = {}
+    if not proc:
+        return owners
+    for line in proc.stdout.splitlines():
+        package, separator, path = line.partition(": ")
+        if separator and PACKAGE_NAME_PATTERN.fullmatch(package):
+            owners[os.path.realpath(path)] = package
+    return owners
+
+
+def get_flatpak_apps():
+    proc = run_command(
+        ["flatpak", "list", "--app", "--columns=application,name,version,installation"],
+        timeout=30,
+    )
+    apps = {}
+    if not proc or proc.returncode != 0:
+        return apps
+    for line in proc.stdout.splitlines():
+        parts = line.split("\t")
+        if len(parts) >= 4:
+            apps[parts[0]] = {"name": parts[1], "version": parts[2], "installation": parts[3]}
+    return apps
+
+
+def get_user_data_home():
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user:
+        try:
+            import pwd
+
+            return Path(pwd.getpwnam(sudo_user).pw_dir) / ".local" / "share"
+        except (ImportError, KeyError):
+            pass
+    return Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share"))
+
+
+def get_installed_applications(packages):
+    if SYSTEM != "linux":
+        return []
+
+    user_data = get_user_data_home()
+    search_dirs = [
+        (Path("/usr/share/applications"), "apt"),
+        (Path("/usr/local/share/applications"), "manual"),
+        (Path("/var/lib/snapd/desktop/applications"), "snap"),
+        (Path("/var/lib/flatpak/exports/share/applications"), "flatpak"),
+        (user_data / "applications", "manual"),
+        (user_data / "flatpak/exports/share/applications", "flatpak"),
+    ]
+    package_versions = {item["name"]: item["version"] for item in packages}
+    owners = get_desktop_package_owners()
+    flatpak_apps = get_flatpak_apps()
+    applications = {}
+
+    for directory, default_source in search_dirs:
+        if not directory.is_dir():
+            continue
+        for desktop_file in sorted(directory.glob("*.desktop")):
+            parser = configparser.ConfigParser(interpolation=None, strict=False)
+            parser.optionxform = str
+            try:
+                parser.read(desktop_file, encoding="utf-8")
+                entry = parser["Desktop Entry"]
+            except (configparser.Error, KeyError, OSError, UnicodeDecodeError):
+                continue
+            try:
+                hidden = entry.getboolean("Hidden", fallback=False) or entry.getboolean("NoDisplay", fallback=False)
+            except ValueError:
+                hidden = False
+            if entry.get("Type", "Application") != "Application" or hidden:
+                continue
+
+            app_id = desktop_file.stem
+            package = owners.get(os.path.realpath(desktop_file), "")
+            source = default_source
+            version = package_versions.get(package, "")
+            if default_source == "flatpak":
+                flatpak = flatpak_apps.get(app_id, {})
+                version = flatpak.get("version", "")
+                package = app_id
+            elif default_source == "snap":
+                package = entry.get("X-SnapInstanceName", app_id.split("_", 1)[0])
+
+            name = entry.get("Name", "").strip()
+            if not name:
+                continue
+            applications[app_id] = {
+                "id": app_id,
+                "name": name,
+                "comment": entry.get("Comment", "").strip(),
+                "exec": entry.get("Exec", "").strip(),
+                "icon": entry.get("Icon", "").strip(),
+                "categories": [value for value in entry.get("Categories", "").split(";") if value],
+                "source": source,
+                "package": package,
+                "version": version,
+                "removable": source == "apt" and bool(package),
+            }
+
+    return sorted(applications.values(), key=lambda item: item["name"].lower())
+
+
+def validate_package_name(name):
+    if not isinstance(name, str) or not PACKAGE_NAME_PATTERN.fullmatch(name):
+        raise ValueError("Invalid package name")
+    return name
+
+
+def preview_package_removal(name):
+    name = validate_package_name(name)
+    proc = run_command(["apt-get", "--simulate", "remove", name], timeout=30)
+    if not proc:
+        raise RuntimeError("Could not find apt-get")
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "Could not preview package removal")
+
+    removed = []
+    for line in proc.stdout.splitlines():
+        match = re.match(r"^Remv\s+(\S+)", line)
+        if match:
+            removed.append(match.group(1))
+    return {"package": name, "removedPackages": removed}
+
+
+def remove_package(name):
+    name = validate_package_name(name)
+    if not (hasattr(os, "geteuid") and os.geteuid() == 0):
+        raise PermissionError("Run Port Killer with sudo to remove installed packages")
+
+    command_env = os.environ.copy()
+    command_env["DEBIAN_FRONTEND"] = "noninteractive"
+    proc = run_command(["apt-get", "--assume-yes", "remove", name], timeout=180, env=command_env)
+    if not proc:
+        raise RuntimeError("Could not find apt-get")
+    if proc.returncode != 0:
+        raise RuntimeError(proc.stderr.strip() or proc.stdout.strip() or "Package removal failed")
+    return {"ok": True, "package": name}
+
+
 def kill_process(pid, sig):
     if SYSTEM == "windows":
         args = ["taskkill", "/PID", str(pid), "/T"]
@@ -307,6 +525,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, build_snapshot())
             return
 
+        if parsed.path == "/api/packages":
+            try:
+                self.send_json(200, get_ubuntu_packages())
+            except RuntimeError as exc:
+                self.send_json(501, {"error": str(exc)})
+            return
+
         self.send_json(404, {"error": "Not found"})
 
     def do_POST(self):
@@ -350,6 +575,30 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(500, {"error": proc.stderr.strip() or proc.stdout.strip() or "docker stop failed"})
             else:
                 self.send_json(200, {"ok": True, "id": container_id})
+            return
+
+        if parsed.path == "/api/packages/remove-preview":
+            try:
+                result = preview_package_removal(payload.get("name"))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except RuntimeError as exc:
+                self.send_json(500, {"error": str(exc)})
+            else:
+                self.send_json(200, result)
+            return
+
+        if parsed.path == "/api/packages/remove":
+            try:
+                result = remove_package(payload.get("name"))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except PermissionError as exc:
+                self.send_json(403, {"error": str(exc)})
+            except RuntimeError as exc:
+                self.send_json(500, {"error": str(exc)})
+            else:
+                self.send_json(200, result)
             return
 
         self.send_json(404, {"error": "Not found"})
