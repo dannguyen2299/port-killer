@@ -17,8 +17,11 @@ Use it when you hit errors like `EADDRINUSE`, `address already in use`, `port 30
 - Kill a process with `SIGTERM` or `SIGKILL` on Linux/macOS.
 - Kill a process with `taskkill` on Windows.
 - Stop Docker containers with `docker stop`.
+- Browse installed applications on Linux, macOS, and Windows.
+- Identify Linux apps from APT, Snap, Flatpak, or manual launchers.
+- Discover macOS `.app` bundles, App Store apps, and Homebrew formulae/casks.
+- Discover classic Windows installers and Microsoft Store/AppX applications.
 - Browse Ubuntu packages installed through APT/dpkg.
-- List the applications visible in the Ubuntu desktop menu and identify their APT, Snap, Flatpak, or manual source.
 - Filter installed apps and libraries by type, install origin, and update availability.
 - Preview dependent packages before removing an Ubuntu package.
 - Package into a single executable per operating system.
@@ -89,9 +92,15 @@ sudo PORT=8765 python3 app.py
 
 On Windows, run the executable or terminal as Administrator when needed.
 
-## Ubuntu Package Manager
+## Apps And Packages
 
-Open the `Apps & Packages` tab to browse desktop applications separately from low-level packages and libraries. Applications are discovered from the system and user `.desktop` entries, including APT, Snap, Flatpak, and manual launchers. Package details include versions, architecture, installed size, and available updates. The inventory works without elevated privileges.
+Open the `Apps & Packages` tab to browse applications separately from low-level packages and libraries. The inventory works without elevated privileges.
+
+| Platform | Application sources | Package inventory | Removal |
+| --- | --- | --- | --- |
+| Linux | Desktop entries, APT, Snap, Flatpak, manual | APT/dpkg | APT packages, with dependency preview |
+| macOS | Application bundles, App Store, Homebrew casks | Homebrew formulae | Read-only in this version |
+| Windows | 32/64-bit Registry, current user, Microsoft Store/AppX | Not exposed separately | Read-only in this version |
 
 Package removal is intentionally available only when Port Killer runs as root:
 
@@ -99,7 +108,7 @@ Package removal is intentionally available only when Port Killer runs as root:
 sudo PORT=8765 python3 app.py
 ```
 
-Before removal, the app runs an APT simulation and shows every package that would be affected. Ubuntu package management currently supports APT/dpkg packages; Snap and Flatpak are not included yet.
+Before Linux removal, the app runs an APT simulation and shows every package that would be affected. Snap, Flatpak, macOS, and Windows removal are not enabled yet.
 
 ## Build A Single Ubuntu/Linux File
 

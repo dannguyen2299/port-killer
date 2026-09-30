@@ -4,6 +4,7 @@ import os
 import platform
 import re
 import configparser
+import plistlib
 import signal
 import socket
 import errno
@@ -22,7 +23,7 @@ PORT = int(os.environ.get("PORT", "8765"))
 SYSTEM = platform.system().lower()
 
 
-def run_command(args, timeout=6, env=None):
+def run_command(args, timeout=6, env=None, encoding=None):
     try:
         return subprocess.run(
             args,
@@ -31,6 +32,7 @@ def run_command(args, timeout=6, env=None):
             text=True,
             timeout=timeout,
             env=env,
+            encoding=encoding,
         )
     except FileNotFoundError:
         return None
@@ -316,8 +318,11 @@ def get_ubuntu_packages():
         "packages": packages,
         "applications": get_installed_applications(packages),
         "platform": platform.platform(),
+        "platformName": "Linux",
         "canManage": can_manage,
+        "supportsPackages": True,
         "packageManager": "apt/dpkg",
+        "manageHint": "Browsing is available. To remove APT packages, restart this app with sudo.",
     }
 
 
@@ -426,6 +431,275 @@ def get_installed_applications(packages):
     return sorted(applications.values(), key=lambda item: item["name"].lower())
 
 
+def get_user_home():
+    sudo_user = os.environ.get("SUDO_USER")
+    if sudo_user and SYSTEM != "windows":
+        try:
+            import pwd
+
+            return Path(pwd.getpwnam(sudo_user).pw_dir)
+        except (ImportError, KeyError):
+            pass
+    return Path.home()
+
+
+def get_homebrew_inventory():
+    brew = "brew"
+    for candidate in (Path("/opt/homebrew/bin/brew"), Path("/usr/local/bin/brew")):
+        if candidate.is_file():
+            brew = str(candidate)
+            break
+    proc = run_command([brew, "info", "--json=v2", "--installed"], timeout=45)
+    if not proc or proc.returncode != 0:
+        return [], {}
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return [], {}
+
+    packages = []
+    for formula in data.get("formulae", []):
+        installed = formula.get("installed") or []
+        version = installed[-1].get("version", "") if installed else ""
+        name = formula.get("name", "")
+        if not name:
+            continue
+        description = formula.get("desc", "") or ""
+        is_library = name.startswith("lib") or " library" in description.lower()
+        packages.append(
+            {
+                "name": name,
+                "version": version,
+                "architecture": platform.machine(),
+                "installedSizeKb": 0,
+                "section": "homebrew",
+                "summary": description,
+                "kind": "library" if is_library else "app",
+                "manual": bool(installed and installed[-1].get("installed_on_request", True)),
+                "upgradeVersion": "",
+            }
+        )
+
+    cask_apps = {}
+    for cask in data.get("casks", []):
+        token = cask.get("token", "")
+        version = cask.get("installed") or cask.get("version", "")
+        for artifact in cask.get("artifacts", []):
+            if not isinstance(artifact, dict):
+                continue
+            for app_name in artifact.get("app", []):
+                cask_apps[app_name] = {"token": token, "version": version}
+    return sorted(packages, key=lambda item: item["name"].lower()), cask_apps
+
+
+def iter_macos_app_bundles(root):
+    if not root.is_dir():
+        return
+    for current, directories, _files in os.walk(root):
+        app_directories = [name for name in directories if name.lower().endswith(".app")]
+        for name in app_directories:
+            yield Path(current) / name
+        directories[:] = [name for name in directories if name not in app_directories]
+
+
+def get_macos_inventory():
+    packages, cask_apps = get_homebrew_inventory()
+    roots = [
+        Path("/System/Library/CoreServices/Applications"),
+        Path("/System/Applications"),
+        Path("/Applications"),
+        get_user_home() / "Applications",
+    ]
+    applications = {}
+    for root in roots:
+        for app_bundle in iter_macos_app_bundles(root):
+            try:
+                with (app_bundle / "Contents/Info.plist").open("rb") as plist_file:
+                    info = plistlib.load(plist_file)
+            except (OSError, plistlib.InvalidFileException):
+                continue
+            app_id = str(info.get("CFBundleIdentifier") or app_bundle.stem)
+            name = str(info.get("CFBundleDisplayName") or info.get("CFBundleName") or app_bundle.stem)
+            version = str(info.get("CFBundleShortVersionString") or info.get("CFBundleVersion") or "")
+            cask = cask_apps.get(app_bundle.name, {})
+            if cask:
+                source = "homebrew"
+                package = cask.get("token", "")
+                version = str(cask.get("version") or version)
+            elif str(app_bundle).startswith("/System/"):
+                source = "system"
+                package = app_id
+            elif (app_bundle / "Contents/_MASReceipt/receipt").exists():
+                source = "app-store"
+                package = app_id
+            else:
+                source = "manual"
+                package = app_id
+            applications[app_id] = {
+                "id": app_id,
+                "name": name,
+                "comment": str(info.get("NSHumanReadableCopyright") or ""),
+                "exec": str(app_bundle),
+                "icon": str(info.get("CFBundleIconFile") or ""),
+                "categories": ["macOS Application"],
+                "source": source,
+                "package": package,
+                "version": version,
+                "removable": False,
+            }
+    return {
+        "packages": packages,
+        "applications": sorted(applications.values(), key=lambda item: item["name"].lower()),
+        "platform": platform.platform(),
+        "platformName": "macOS",
+        "canManage": False,
+        "supportsPackages": bool(packages),
+        "packageManager": "Applications/Homebrew",
+        "manageHint": "Application inventory is available. Removal from macOS is not enabled yet.",
+    }
+
+
+def get_windows_registry_apps():
+    try:
+        import winreg
+    except ImportError:
+        return []
+
+    uninstall_path = r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"
+    locations = [
+        (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_64KEY, "64-bit"),
+        (winreg.HKEY_LOCAL_MACHINE, winreg.KEY_WOW64_32KEY, "32-bit"),
+        (winreg.HKEY_CURRENT_USER, 0, "Current user"),
+    ]
+    applications = {}
+    for hive, view_flag, scope in locations:
+        try:
+            root = winreg.OpenKey(hive, uninstall_path, 0, winreg.KEY_READ | view_flag)
+        except OSError:
+            continue
+        with root:
+            for index in range(winreg.QueryInfoKey(root)[0]):
+                try:
+                    key_name = winreg.EnumKey(root, index)
+                    entry = winreg.OpenKey(root, key_name)
+                except OSError:
+                    continue
+                with entry:
+                    def value(name, default=""):
+                        try:
+                            return winreg.QueryValueEx(entry, name)[0]
+                        except OSError:
+                            return default
+
+                    display_name = str(value("DisplayName")).strip()
+                    release_type = str(value("ReleaseType")).lower()
+                    if (
+                        not display_name
+                        or value("SystemComponent", 0) == 1
+                        or value("ParentKeyName")
+                        or release_type in ("update", "hotfix", "security update")
+                    ):
+                        continue
+                    publisher = str(value("Publisher")).strip()
+                    display_version = str(value("DisplayVersion")).strip()
+                    app_id = f"{scope}:{key_name}"
+                    source = "msi" if value("WindowsInstaller", 0) == 1 else "registry"
+                    identity = (display_name.lower(), display_version.lower(), publisher.lower())
+                    applications[identity] = {
+                        "id": key_name,
+                        "name": display_name,
+                        "comment": publisher,
+                        "exec": str(value("InstallLocation")).strip(),
+                        "icon": str(value("DisplayIcon")).strip(),
+                        "categories": [publisher or scope],
+                        "source": source,
+                        "package": key_name,
+                        "version": display_version,
+                        "removable": False,
+                    }
+    return sorted(applications.values(), key=lambda item: item["name"].lower())
+
+
+def get_windows_store_apps():
+    command = (
+        "[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); "
+        "$packages = @(Get-AppxPackage | Where-Object { -not $_.IsFramework -and -not $_.IsResourcePackage } | "
+        "Select-Object Name,PackageFullName,PackageFamilyName,Version,Publisher,InstallLocation,NonRemovable); "
+        "$start = @(Get-StartApps); "
+        "[PSCustomObject]@{ Packages = $packages; Start = $start } | ConvertTo-Json -Depth 4 -Compress"
+    )
+    proc = run_command(["powershell.exe", "-NoProfile", "-Command", command], timeout=45, encoding="utf-8")
+    if not proc or proc.returncode != 0 or not proc.stdout.strip():
+        return []
+    try:
+        rows = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(rows, dict):
+        return []
+    start_rows = rows.get("Start", [])
+    package_rows = rows.get("Packages", [])
+    if isinstance(start_rows, dict):
+        start_rows = [start_rows]
+    if isinstance(package_rows, dict):
+        package_rows = [package_rows]
+    start_names = {}
+    for start_app in start_rows:
+        app_user_model_id = str(start_app.get("AppID") or "")
+        family = app_user_model_id.split("!", 1)[0]
+        if family:
+            start_names.setdefault(family, []).append(str(start_app.get("Name") or "").strip())
+    applications = []
+    for row in package_rows:
+        family = str(row.get("PackageFamilyName") or "").strip()
+        display_names = [name for name in start_names.get(family, []) if name]
+        if not display_names:
+            continue
+        package = str(row.get("PackageFullName") or row.get("Name") or family).strip()
+        for name in display_names:
+            applications.append(
+                {
+                    "id": f"{package}:{name}",
+                    "name": name,
+                    "comment": str(row.get("Publisher") or "").strip(),
+                    "exec": str(row.get("InstallLocation") or "").strip(),
+                    "icon": "",
+                    "categories": ["Microsoft Store"],
+                    "source": "microsoft-store",
+                    "package": package,
+                    "version": str(row.get("Version") or "").strip(),
+                    "removable": False,
+                }
+            )
+    return applications
+
+
+def get_windows_inventory():
+    applications = get_windows_registry_apps()
+    known = {(item["name"].lower(), item["version"].lower()) for item in applications}
+    for app in get_windows_store_apps():
+        if (app["name"].lower(), app["version"].lower()) not in known:
+            applications.append(app)
+    return {
+        "packages": [],
+        "applications": sorted(applications, key=lambda item: item["name"].lower()),
+        "platform": platform.platform(),
+        "platformName": "Windows",
+        "canManage": False,
+        "supportsPackages": False,
+        "packageManager": "Windows Registry/Microsoft Store",
+        "manageHint": "Application inventory is available. Windows uninstall commands are not enabled yet.",
+    }
+
+
+def get_software_inventory():
+    if SYSTEM == "darwin":
+        return get_macos_inventory()
+    if SYSTEM == "windows":
+        return get_windows_inventory()
+    return get_ubuntu_packages()
+
+
 def validate_package_name(name):
     if not isinstance(name, str) or not PACKAGE_NAME_PATTERN.fullmatch(name):
         raise ValueError("Invalid package name")
@@ -433,6 +707,8 @@ def validate_package_name(name):
 
 
 def preview_package_removal(name):
+    if SYSTEM != "linux":
+        raise RuntimeError("Package removal is currently available for APT on Linux only")
     name = validate_package_name(name)
     proc = run_command(["apt-get", "--simulate", "remove", name], timeout=30)
     if not proc:
@@ -449,6 +725,8 @@ def preview_package_removal(name):
 
 
 def remove_package(name):
+    if SYSTEM != "linux":
+        raise RuntimeError("Package removal is currently available for APT on Linux only")
     name = validate_package_name(name)
     if not (hasattr(os, "geteuid") and os.geteuid() == 0):
         raise PermissionError("Run Port Killer with sudo to remove installed packages")
@@ -527,7 +805,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/packages":
             try:
-                self.send_json(200, get_ubuntu_packages())
+                self.send_json(200, get_software_inventory())
             except RuntimeError as exc:
                 self.send_json(501, {"error": str(exc)})
             return

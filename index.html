@@ -117,6 +117,9 @@
     }
 
     .stats.four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .stats.four.apps-only {
+      grid-template-columns: minmax(0, 420px);
+    }
 
     .stat, .panel {
       background: var(--panel);
@@ -459,6 +462,9 @@
       applications: [],
       packagesLoaded: false,
       canManagePackages: false,
+      supportsPackages: true,
+      platformName: "",
+      packageManager: "",
       packagePage: 1
     };
     const els = {
@@ -587,6 +593,21 @@
       return `${sizeKb} KB`;
     }
 
+    function sourceLabel(source) {
+      return {
+        "app-store": "App Store",
+        "homebrew": "Homebrew",
+        "registry": "Registry",
+        "msi": "MSI",
+        "microsoft-store": "Microsoft Store",
+        "system": "System",
+        "manual": "Manual",
+        "flatpak": "Flatpak",
+        "snap": "Snap",
+        "apt": "APT"
+      }[source] || source;
+    }
+
     function filteredPackages() {
       const search = els.packageSearch.value.trim().toLowerCase();
       const mode = els.packageKind.value;
@@ -638,7 +659,7 @@
               <span class="container-line mono">${escapeHtml(item.id)}</span>
             </td>
             <td data-label="Version" class="version mono">${escapeHtml(item.version || "-")}</td>
-            <td data-label="Source"><span class="badge">${escapeHtml(item.source.toUpperCase())}</span><span class="container-line">${escapeHtml(item.categories.slice(0, 2).join(" · ") || "Other")}</span></td>
+            <td data-label="Source"><span class="badge">${escapeHtml(sourceLabel(item.source))}</span><span class="container-line">${escapeHtml(item.categories.slice(0, 2).join(" · ") || "Other")}</span></td>
             <td data-label="Package" class="mono">${escapeHtml(item.package || "-")}</td>
             <td data-label="Description" class="package-description">${escapeHtml(item.comment || item.exec || "-")}</td>
             <td data-label="Actions"><div class="actions">${item.removable ? `<button class="danger" data-remove-package="${escapeHtml(item.package)}" ${state.canManagePackages ? "" : "disabled"}>Remove</button>` : '<span class="muted">-</span>'}</div></td>
@@ -685,7 +706,7 @@
 
     async function loadPackages() {
       els.refreshBtn.disabled = true;
-      setNotice("Reading installed Ubuntu applications and packages...", "", els.packageNotice);
+      setNotice("Reading installed applications and packages...", "", els.packageNotice);
       try {
         const response = await fetch("/api/packages");
         const data = await response.json();
@@ -694,10 +715,16 @@
         state.applications = data.applications || [];
         state.packagesLoaded = true;
         state.canManagePackages = Boolean(data.canManage);
+        state.supportsPackages = data.supportsPackages !== false;
+        state.platformName = data.platformName || "this system";
+        state.packageManager = data.packageManager || "system inventory";
         state.packagePage = 1;
-        els.permissionNote.hidden = state.canManagePackages;
+        els.permissionNote.textContent = data.manageHint || "Application inventory is read-only on this system.";
+        els.permissionNote.hidden = state.canManagePackages || !data.manageHint;
+        configureSoftwareView();
         renderPackages();
-        setNotice(`Loaded ${state.applications.length} applications and ${state.packages.length} packages.`, "ok", els.packageNotice);
+        const packageText = state.supportsPackages ? ` and ${state.packages.length} packages` : "";
+        setNotice(`Loaded ${state.applications.length} applications${packageText} on ${state.platformName}.`, "ok", els.packageNotice);
       } catch (error) {
         setNotice(error.message, "error", els.packageNotice);
       } finally {
@@ -757,7 +784,7 @@
         const details = affected.length
           ? `This will remove ${affected.length} package(s):\n\n${affected.slice(0, 20).join("\n")}${affected.length > 20 ? `\n...and ${affected.length - 20} more` : ""}`
           : `Remove ${name}?`;
-        if (!confirm(`${details}\n\nThis action changes your Ubuntu installation.`)) {
+        if (!confirm(`${details}\n\nThis action changes your system installation.`)) {
           setNotice("Removal cancelled.", "", els.packageNotice);
           return;
         }
@@ -779,7 +806,7 @@
       els.tabs.forEach(tab => tab.classList.toggle("active", tab.dataset.view === view));
       els.pageSubtitle.textContent = view === "ports"
         ? "Inspect listening ports, processes, and Docker containers."
-        : "Browse desktop applications and the packages installed on this Ubuntu system.";
+        : `Browse applications${state.supportsPackages ? " and packages" : ""} installed on ${state.platformName || "this system"}.`;
       if (view === "packages" && !state.packagesLoaded) loadPackages();
     }
 
@@ -790,13 +817,29 @@
     els.tabs.forEach(tab => tab.addEventListener("click", () => switchView(tab.dataset.view)));
     function updateCatalogFilters() {
       const applications = els.packageKind.value === "applications";
-      els.packageOrigin.innerHTML = applications
-        ? '<option value="">All sources</option><option value="apt">APT</option><option value="snap">Snap</option><option value="flatpak">Flatpak</option><option value="manual">Manual</option>'
-        : '<option value="">Manual &amp; automatic</option><option value="manual">Manually installed</option><option value="automatic">Installed as dependency</option>';
+      if (applications) {
+        const sources = [...new Set(state.applications.map(item => item.source))].sort();
+        els.packageOrigin.innerHTML = '<option value="">All sources</option>' + sources.map(source => `<option value="${escapeHtml(source)}">${escapeHtml(sourceLabel(source))}</option>`).join("");
+      } else {
+        els.packageOrigin.innerHTML = '<option value="">Manual &amp; automatic</option><option value="manual">Manually installed</option><option value="automatic">Installed as dependency</option>';
+      }
       els.packageUpdates.disabled = applications;
       if (applications) els.packageUpdates.value = "";
       state.packagePage = 1;
       renderPackages();
+    }
+
+    function configureSoftwareView() {
+      els.packageKind.innerHTML = '<option value="applications">Installed applications</option>';
+      if (state.supportsPackages) {
+        els.packageKind.insertAdjacentHTML("beforeend", '<option value="packages">All packages</option><option value="library">Libraries</option><option value="system">System packages</option>');
+      }
+      els.packageCount.parentElement.hidden = !state.supportsPackages;
+      els.libraryCount.parentElement.hidden = !state.supportsPackages;
+      els.upgradeCount.parentElement.hidden = !state.supportsPackages;
+      els.appCount.closest(".stats").classList.toggle("apps-only", !state.supportsPackages);
+      updateCatalogFilters();
+      els.pageSubtitle.textContent = `Browse applications${state.supportsPackages ? " and packages" : ""} installed on ${state.platformName}.`;
     }
 
     [els.packageSearch, els.packageOrigin, els.packageUpdates].forEach(control => {
