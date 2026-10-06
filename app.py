@@ -16,7 +16,7 @@ import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 
 ROOT = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
@@ -813,6 +813,178 @@ def remove_package(name):
     return {"ok": True, "package": name}
 
 
+CONTAINER_ID_PATTERN = re.compile(r"^[a-fA-F0-9]{6,64}$")
+COMPOSE_PROJECT_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
+CONTAINER_ACTIONS = {"start", "stop", "restart", "remove"}
+PROJECT_ACTIONS = {"up", "start", "stop", "restart", "down"}
+PUBLISHED_PORT_PATTERN = re.compile(r"(?:(?P<host>[\d.]+|\[::\]):)?(?P<public>\d+)->(?P<private>\d+)/(?P<proto>tcp|udp)")
+# Go template so compose labels arrive as separate fields; the plain Labels
+# string is comma-joined and label values may contain commas themselves.
+CONTAINER_LIST_FORMAT = (
+    '{"id":{{json .ID}},"name":{{json .Names}},"image":{{json .Image}},'
+    '"state":{{json .State}},"status":{{json .Status}},"ports":{{json .Ports}},'
+    '"createdAt":{{json .CreatedAt}},"command":{{json .Command}},'
+    '"project":{{json (.Label "com.docker.compose.project")}},'
+    '"service":{{json (.Label "com.docker.compose.service")}},'
+    '"workingDir":{{json (.Label "com.docker.compose.project.working_dir")}},'
+    '"configFiles":{{json (.Label "com.docker.compose.project.config_files")}},'
+    '"envFile":{{json (.Label "com.docker.compose.project.environment_file")}}}'
+)
+
+
+def docker_error(proc, fallback):
+    if not proc:
+        return "Could not find the docker command"
+    return proc.stderr.strip() or proc.stdout.strip() or fallback
+
+
+def list_docker_containers(project=None):
+    args = ["docker", "ps", "--all", "--format", CONTAINER_LIST_FORMAT]
+    if project:
+        args[3:3] = ["--filter", f"label=com.docker.compose.project={project}"]
+    proc = run_command(args, timeout=15)
+    if not proc or proc.returncode != 0:
+        raise RuntimeError(docker_error(proc, "docker ps failed"))
+
+    containers = []
+    for line in proc.stdout.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        seen = set()
+        published = []
+        for match in PUBLISHED_PORT_PATTERN.finditer(row.get("ports", "")):
+            key = (int(match.group("public")), int(match.group("private")), match.group("proto"))
+            if key in seen:
+                continue  # Same mapping is listed once for IPv4 and once for IPv6.
+            seen.add(key)
+            published.append({"publicPort": key[0], "privatePort": key[1], "protocol": key[2]})
+        row["publishedPorts"] = published
+        containers.append(row)
+    return containers
+
+
+def get_container_overview():
+    containers = list_docker_containers()
+    projects = {}
+    for container in containers:
+        name = container.get("project")
+        if not name:
+            continue
+        project = projects.setdefault(
+            name,
+            {
+                "name": name,
+                "workingDir": container.get("workingDir", ""),
+                "configFiles": [f for f in container.get("configFiles", "").split(",") if f],
+                "containers": [],
+            },
+        )
+        project["containers"].append(container["id"])
+
+    for project in projects.values():
+        project["composeFileFound"] = bool(project["configFiles"]) and all(Path(f).is_file() for f in project["configFiles"])
+
+    compose = run_command(["docker", "compose", "version", "--short"])
+    return {
+        "containers": containers,
+        "projects": sorted(projects.values(), key=lambda p: p["name"]),
+        "composeAvailable": bool(compose and compose.returncode == 0),
+    }
+
+
+def get_container_stats():
+    proc = run_command(["docker", "stats", "--no-stream", "--format", "{{json .}}"], timeout=20)
+    if not proc or proc.returncode != 0:
+        raise RuntimeError(docker_error(proc, "docker stats failed"))
+    stats = {}
+    for line in proc.stdout.splitlines():
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        stats[row.get("ID", "")[:12]] = {
+            "cpu": row.get("CPUPerc", ""),
+            "memory": row.get("MemUsage", ""),
+            "memoryPercent": row.get("MemPerc", ""),
+            "netIO": row.get("NetIO", ""),
+            "blockIO": row.get("BlockIO", ""),
+        }
+    return stats
+
+
+def validate_container_id(container_id):
+    if not isinstance(container_id, str) or not CONTAINER_ID_PATTERN.fullmatch(container_id):
+        raise ValueError("Invalid container ID")
+    return container_id
+
+
+def run_container_action(container_id, action):
+    container_id = validate_container_id(container_id)
+    if action not in CONTAINER_ACTIONS:
+        raise ValueError("Unsupported container action")
+    args = ["docker", "rm", "--force", container_id] if action == "remove" else ["docker", action, container_id]
+    proc = run_command(args, timeout=60)
+    if not proc or proc.returncode != 0:
+        raise RuntimeError(docker_error(proc, f"docker {action} failed"))
+    return {"ok": True, "id": container_id, "action": action}
+
+
+def get_container_logs(container_id, tail):
+    container_id = validate_container_id(container_id)
+    tail = max(10, min(int(tail), 5000))
+    proc = run_command(["docker", "logs", "--timestamps", "--tail", str(tail), container_id], timeout=15, encoding="utf-8")
+    if not proc or proc.returncode != 0:
+        raise RuntimeError(docker_error(proc, "docker logs failed"))
+    # docker logs writes the container's stderr stream to our stderr; merge
+    # both and order by the leading RFC3339 timestamp.
+    lines = proc.stdout.splitlines() + proc.stderr.splitlines()
+    lines.sort(key=lambda line: line.split(" ", 1)[0])
+    return {"id": container_id, "lines": lines[-tail:]}
+
+
+def run_project_action(name, action):
+    if not isinstance(name, str) or not COMPOSE_PROJECT_PATTERN.fullmatch(name):
+        raise ValueError("Invalid compose project name")
+    if action not in PROJECT_ACTIONS:
+        raise ValueError("Unsupported project action")
+
+    # Rebuild the compose invocation from the containers' own labels instead
+    # of trusting paths sent by the browser.
+    containers = list_docker_containers(project=name)
+    if not containers:
+        raise ValueError(f"No containers found for project {name}")
+    first = containers[0]
+    config_files = [f for f in first.get("configFiles", "").split(",") if f]
+    files_found = bool(config_files) and all(Path(f).is_file() for f in config_files)
+
+    if not files_found:
+        if action == "up":
+            raise RuntimeError("Compose file for this project was not found on disk, so it cannot be brought up again")
+        if action == "down":
+            # Compose v2 can tear down a project from its labels alone.
+            args = ["docker", "compose", "--project-name", name, "down"]
+        else:
+            args = ["docker", action, *[c["id"] for c in containers]]
+        proc = run_command(args, timeout=300)
+    else:
+        args = ["docker", "compose", "--project-name", name]
+        working_dir = first.get("workingDir") or str(Path(config_files[0]).parent)
+        args += ["--project-directory", working_dir]
+        for config_file in config_files:
+            args += ["--file", config_file]
+        for env_file in first.get("envFile", "").split(","):
+            if env_file and Path(env_file).is_file():
+                args += ["--env-file", env_file]
+        args += ["up", "--detach"] if action == "up" else [action]
+        proc = run_command(args, timeout=600)
+
+    if not proc or proc.returncode != 0:
+        raise RuntimeError(docker_error(proc, f"docker compose {action} failed"))
+    return {"ok": True, "project": name, "action": action, "output": (proc.stderr + proc.stdout).strip()[-4000:]}
+
+
 def kill_process(pid, sig):
     if SYSTEM == "windows":
         args = ["taskkill", "/PID", str(pid), "/T"]
@@ -875,6 +1047,31 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, build_snapshot())
             return
 
+        if parsed.path == "/api/containers":
+            try:
+                self.send_json(200, get_container_overview())
+            except RuntimeError as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if parsed.path == "/api/containers/stats":
+            try:
+                self.send_json(200, {"stats": get_container_stats()})
+            except RuntimeError as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
+        if parsed.path == "/api/containers/logs":
+            query = parse_qs(parsed.query)
+            try:
+                tail = int(query.get("tail", ["300"])[0])
+                self.send_json(200, get_container_logs(query.get("id", [""])[0], tail))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except RuntimeError as exc:
+                self.send_json(500, {"error": str(exc)})
+            return
+
         if parsed.path == "/api/packages":
             try:
                 self.send_json(200, get_software_inventory())
@@ -925,6 +1122,20 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(500, {"error": proc.stderr.strip() or proc.stdout.strip() or "docker stop failed"})
             else:
                 self.send_json(200, {"ok": True, "id": container_id})
+            return
+
+        if parsed.path in ("/api/containers/action", "/api/containers/project-action"):
+            try:
+                if parsed.path == "/api/containers/action":
+                    result = run_container_action(payload.get("id"), payload.get("action"))
+                else:
+                    result = run_project_action(payload.get("project"), payload.get("action"))
+            except ValueError as exc:
+                self.send_json(400, {"error": str(exc)})
+            except RuntimeError as exc:
+                self.send_json(500, {"error": str(exc)})
+            else:
+                self.send_json(200, result)
             return
 
         if parsed.path == "/api/packages/remove-preview":

@@ -17,6 +17,8 @@ Use it when you hit errors like `EADDRINUSE`, `address already in use`, `port 30
 - Kill a process with `SIGTERM` or `SIGKILL` on Linux/macOS.
 - Kill a process with `taskkill` on Windows.
 - Stop Docker containers with `docker stop`.
+- Manage Docker containers grouped by `docker compose` project: up, start, stop, restart, down, remove.
+- View container logs (follow mode, line filter) and live CPU/memory usage.
 - Browse installed applications on Linux, macOS, and Windows.
 - Identify Linux apps from APT, Snap, Flatpak, or manual launchers.
 - Discover macOS `.app` bundles, App Store apps, and Homebrew formulae/casks.

@@ -299,7 +299,227 @@
       color: #754000;
     }
 
+    .container-toolbar {
+      grid-template-columns: minmax(220px, 1fr) auto auto;
+    }
+
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      height: 40px;
+      white-space: nowrap;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .switch input {
+      appearance: none;
+      position: relative;
+      width: 34px;
+      height: 20px;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      background: #c3cad6;
+      cursor: pointer;
+      transition: background .15s;
+    }
+
+    .switch input::after {
+      content: "";
+      position: absolute;
+      top: 3px;
+      left: 3px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      transition: transform .15s;
+    }
+
+    .switch input:checked { background: var(--accent); }
+    .switch input:checked::after { transform: translateX(14px); }
+
+    .check {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 34px;
+      padding: 0 12px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .check input { width: auto; height: auto; }
+
+    .dd-table { table-layout: fixed; }
+    .dd-table td { overflow-wrap: anywhere; padding-top: 9px; padding-bottom: 9px; }
+    .dd-table tr.group-row td { background: #fbfcfd; }
+    .dd-table tr.child-row td:nth-child(2) { padding-left: 44px; }
+    .dd-table tr:hover td { background: #f3f6f9; }
+
+    .name-cell {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .name-cell > div { min-width: 0; }
+
+    .name-link {
+      height: auto;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font-weight: 650;
+      text-align: left;
+      overflow-wrap: anywhere;
+    }
+
+    .name-link:hover { text-decoration: underline; }
+
+    .sub {
+      display: block;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .status-icon {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: #eef1f5;
+      color: #8a94a6;
+    }
+
+    .status-icon.running { background: #e3f5ec; color: #12a150; }
+    .status-icon.partial, .status-icon.restarting, .status-icon.paused { background: #fff4de; color: #c27c00; }
+
+    .status-icon svg { width: 18px; height: 18px; fill: currentColor; }
+
+    .state {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-weight: 650;
+    }
+
+    .state::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #a0a8b6;
+    }
+
+    .state.running::before { background: #12a150; }
+    .state.partial::before, .state.restarting::before, .state.paused::before { background: #d48a00; }
+    .state.dead::before { background: var(--danger); }
+
+    .icon-btn {
+      width: 32px;
+      min-width: 0;
+      height: 32px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: #475467;
+    }
+
+    .icon-btn:hover:not(:disabled) { background: #e6eaf0; }
+    .icon-btn svg { width: 18px; height: 18px; fill: currentColor; }
+    .icon-btn.play { color: var(--accent); }
+    .icon-btn.stop { color: var(--ink); }
+    .icon-btn.delete:hover:not(:disabled) { color: var(--danger); background: #fdecec; }
+
+    .chevron svg { transition: transform .15s; }
+    .chevron.open svg { transform: rotate(90deg); }
+
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid #c3cad6;
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .actions.nowrap { flex-wrap: nowrap; gap: 2px; }
+
+    .port-link {
+      display: inline-block;
+      margin: 0 6px 2px 0;
+      color: var(--accent);
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    .port-link:hover { text-decoration: underline; }
+
+    dialog {
+      width: min(1100px, calc(100vw - 32px));
+      max-height: calc(100vh - 48px);
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    dialog::backdrop { background: rgba(15, 23, 42, .45); }
+
+    .log-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .log-head h2 {
+      flex: 1 1 200px;
+      margin: 0;
+      font-size: 16px;
+    }
+
+    .log-head input { width: 200px; height: 34px; }
+    .log-head select, .log-head button, .log-head .check { height: 34px; }
+
+    .log-body {
+      height: min(70vh, 720px);
+      margin: 0;
+      padding: 12px 14px;
+      overflow: auto;
+      background: #0f172a;
+      color: #e2e8f0;
+      font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .log-body .ts { color: #64748b; }
+
     @media (max-width: 820px) {
+      .container-toolbar { grid-template-columns: 1fr; }
+      .dd-table tr.child-row td:nth-child(2) { padding-left: 14px; }
+      .dd-table td:first-child:empty { display: none; }
+
       header {
         display: block;
       }
@@ -357,6 +577,7 @@
 
   <nav class="tabs" aria-label="Tools">
     <button class="tab active" data-view="ports">Ports &amp; Processes</button>
+    <button class="tab" data-view="containers">Containers</button>
     <button class="tab" data-view="packages">Apps &amp; Packages</button>
   </nav>
 
@@ -406,6 +627,48 @@
       <div class="empty" id="empty" hidden>No services match the current filters.</div>
     </section>
     </div>
+
+    <div class="view" id="containersView" hidden>
+      <section class="stats four" aria-label="Container overview">
+        <div class="stat"><b id="runningCount">0</b><span>Running containers</span></div>
+        <div class="stat"><b id="stoppedCount">0</b><span>Stopped containers</span></div>
+        <div class="stat"><b id="cpuTotal">-</b><span>Container CPU usage</span></div>
+        <div class="stat"><b id="memoryTotal">-</b><span>Container memory usage</span></div>
+      </section>
+
+      <section class="toolbar container-toolbar" aria-label="Container filters">
+        <input id="containerSearch" placeholder="Search project, container, image, port...">
+        <label class="switch"><input type="checkbox" id="containerRunningOnly"> Only show running containers</label>
+        <label class="switch"><input type="checkbox" id="containerAutoRefresh" checked> Live</label>
+      </section>
+
+      <div class="notice" id="containerNotice"></div>
+
+      <section class="panel">
+        <table class="dd-table">
+          <colgroup><col style="width:44px"><col style="width:27%"><col style="width:17%"><col style="width:14%"><col style="width:14%"><col style="width:8%"><col style="width:9%"><col style="width:140px"></colgroup>
+          <thead><tr><th></th><th>Name</th><th>Image</th><th>Status</th><th>Port(s)</th><th>CPU</th><th>Memory</th><th style="text-align:right">Actions</th></tr></thead>
+          <tbody id="containerBody"></tbody>
+        </table>
+        <div class="empty" id="containerEmpty" hidden>No containers match the current filters.</div>
+      </section>
+    </div>
+
+    <dialog id="logDialog">
+      <div class="log-head">
+        <h2 id="logTitle">Logs</h2>
+        <input id="logFilter" placeholder="Filter lines...">
+        <select id="logTail" aria-label="Number of lines">
+          <option value="100">Last 100</option>
+          <option value="300" selected>Last 300</option>
+          <option value="1000">Last 1000</option>
+          <option value="5000">Last 5000</option>
+        </select>
+        <label class="check"><input type="checkbox" id="logFollow" checked> Follow</label>
+        <button id="logClose">Close</button>
+      </div>
+      <pre class="log-body" id="logBody"></pre>
+    </dialog>
 
     <div class="view" id="packagesView" hidden>
       <section class="stats four" aria-label="Software overview">
@@ -818,18 +1081,415 @@
       }
     });
 
+    const EXPANDED_KEY = "portKiller.expandedProjects";
+    const docker = {
+      containers: [],
+      projects: [],
+      stats: {},
+      loaded: false,
+      loading: false,
+      pending: new Map(),
+      expanded: new Set(),
+      timer: null,
+      logId: "",
+      logLines: [],
+      logTimer: null
+    };
+    try {
+      docker.expanded = new Set(JSON.parse(localStorage.getItem(EXPANDED_KEY) || "[]"));
+    } catch (error) {
+      // Storage may be unavailable; projects simply start collapsed.
+    }
+    const cEls = {
+      view: document.querySelector("#containersView"),
+      body: document.querySelector("#containerBody"),
+      empty: document.querySelector("#containerEmpty"),
+      notice: document.querySelector("#containerNotice"),
+      search: document.querySelector("#containerSearch"),
+      runningOnly: document.querySelector("#containerRunningOnly"),
+      autoRefresh: document.querySelector("#containerAutoRefresh"),
+      runningCount: document.querySelector("#runningCount"),
+      stoppedCount: document.querySelector("#stoppedCount"),
+      cpuTotal: document.querySelector("#cpuTotal"),
+      memoryTotal: document.querySelector("#memoryTotal"),
+      logDialog: document.querySelector("#logDialog"),
+      logTitle: document.querySelector("#logTitle"),
+      logBody: document.querySelector("#logBody"),
+      logFilter: document.querySelector("#logFilter"),
+      logTail: document.querySelector("#logTail"),
+      logFollow: document.querySelector("#logFollow"),
+      logClose: document.querySelector("#logClose")
+    };
+
+    const ICONS = {
+      play: '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>',
+      stop: '<svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5"/></svg>',
+      restart: '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.95 7.95 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z"/></svg>',
+      delete: '<svg viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6zM19 4h-3.5l-1-1h-5l-1 1H5v2h14z"/></svg>',
+      logs: '<svg viewBox="0 0 24 24"><path d="M4 5h16v2H4zm0 6h16v2H4zm0 6h10v2H4z"/></svg>',
+      chevron: '<svg viewBox="0 0 24 24"><path d="M9.3 5.3 8 6.6l5.4 5.4L8 17.4l1.3 1.3L16 12z"/></svg>',
+      stack: '<svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5zm-7.5 8.8L2 12l10 5 10-5-2.5-1.2L12 14.5zm0 5L2 17l10 5 10-5-2.5-1.2L12 19.5z"/></svg>',
+      box: '<svg viewBox="0 0 24 24"><path d="M21 7.5 12 2 3 7.5v9L12 22l9-5.5zM12 4.3l6.2 3.7L12 11.7 5.8 8zM5 9.7l6 3.6v6.4l-6-3.7zm8 10v-6.4l6-3.6v6.3z"/></svg>'
+    };
+
+    function isRunning(container) {
+      return container.state === "running" || container.state === "restarting";
+    }
+
+    function matchesContainerFilters(container) {
+      if (cEls.runningOnly.checked && !isRunning(container)) return false;
+      const search = cEls.search.value.trim().toLowerCase();
+      if (!search) return true;
+      return [container.project, container.service, container.name, container.id, container.image, container.ports, container.state]
+        .join(" ").toLowerCase().includes(search);
+    }
+
+    function parseBytes(text) {
+      const match = /^([\d.]+)\s*([kKMGT]?i?B)$/.exec(String(text || "").trim());
+      if (!match) return 0;
+      const powers = { B: 0, kB: 1, KB: 1, KiB: 1, MB: 2, MiB: 2, GB: 3, GiB: 3, TB: 4, TiB: 4 };
+      const base = match[2].includes("i") ? 1024 : 1000;
+      return Number(match[1]) * base ** (powers[match[2]] ?? 0);
+    }
+
+    function formatBytes(bytes) {
+      if (!bytes) return "0 MB";
+      if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(2)} GB`;
+      return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+    }
+
+    function usage(containers) {
+      let cpu = 0;
+      let memory = 0;
+      let known = false;
+      for (const container of containers) {
+        const stat = docker.stats[container.id];
+        if (!stat || !isRunning(container)) continue;
+        known = true;
+        cpu += parseFloat(stat.cpu) || 0;
+        memory += parseBytes(stat.memory.split(" / ")[0]);
+      }
+      return { cpu, memory, known };
+    }
+
+    function usageCells(containers) {
+      if (!containers.some(isRunning)) return '<td data-label="CPU"><span class="muted">-</span></td><td data-label="Memory"><span class="muted">-</span></td>';
+      const total = usage(containers);
+      if (!total.known) return '<td data-label="CPU"><span class="muted">…</span></td><td data-label="Memory"><span class="muted">…</span></td>';
+      return `<td data-label="CPU" class="mono">${total.cpu.toFixed(2)}%</td><td data-label="Memory" class="mono">${formatBytes(total.memory)}</td>`;
+    }
+
+    function portsHtml(containers, limit = 3) {
+      const ports = containers.flatMap(container => container.publishedPorts);
+      if (!ports.length) return '<span class="muted">-</span>';
+      const links = ports.slice(0, limit).map(port => port.protocol === "tcp"
+        ? `<a class="port-link mono" href="http://localhost:${port.publicPort}" target="_blank" rel="noopener" title="Open http://localhost:${port.publicPort}">${port.publicPort}:${port.privatePort}</a>`
+        : `<span class="port-link mono">${port.publicPort}:${port.privatePort}/udp</span>`);
+      if (ports.length > limit) links.push(`<span class="sub">+${ports.length - limit} more</span>`);
+      return links.join("");
+    }
+
+    function iconButton(kind, attrs, title, extraClass = "") {
+      return `<button class="icon-btn ${kind} ${extraClass}" ${attrs} title="${title}" aria-label="${title}">${ICONS[kind]}</button>`;
+    }
+
+    function actionsHtml(key, running, attrs, logsAttrs) {
+      const pending = docker.pending.get(key);
+      if (pending) {
+        return `<div class="actions nowrap"><span class="muted" style="margin-right:8px">${escapeHtml(pending)}</span><span class="spinner"></span></div>`;
+      }
+      return `
+        <div class="actions nowrap">
+          ${running ? iconButton("stop", `data-act="stop" ${attrs}`, "Stop") : iconButton("play", `data-act="start" ${attrs}`, "Start")}
+          ${iconButton("restart", `data-act="restart" ${attrs}`, "Restart")}
+          ${logsAttrs ? iconButton("logs", logsAttrs, "View logs") : '<span style="width:32px"></span>'}
+          ${iconButton("delete", `data-act="delete" ${attrs}`, "Delete")}
+        </div>`;
+    }
+
+    function containerRowHtml(container, child) {
+      const id = escapeHtml(container.id);
+      const name = escapeHtml(container.name);
+      const label = child ? (container.service || container.name) : container.name;
+      const attrs = `data-kind="container" data-id="${id}" data-name="${name}"`;
+      return `
+        <tr class="${child ? "child-row" : ""}">
+          <td></td>
+          <td data-label="Name">
+            <div class="name-cell">
+              <span class="status-icon ${escapeHtml(container.state)}">${ICONS.box}</span>
+              <div>
+                <button class="name-link" data-logs="${id}" data-name="${name}" title="View logs">${escapeHtml(label)}</button>
+                <span class="sub mono">${id}${child ? ` · ${name}` : ""}</span>
+              </div>
+            </div>
+          </td>
+          <td data-label="Image" class="mono">${escapeHtml(container.image)}</td>
+          <td data-label="Status">
+            <span class="state ${escapeHtml(container.state)}">${escapeHtml(container.state.charAt(0).toUpperCase() + container.state.slice(1))}</span>
+            <span class="sub">${escapeHtml(container.status)}</span>
+          </td>
+          <td data-label="Port(s)">${portsHtml([container])}</td>
+          ${usageCells([container])}
+          <td data-label="Actions">${actionsHtml(`c:${container.id}`, isRunning(container), attrs, `data-logs="${id}" data-name="${name}"`)}</td>
+        </tr>`;
+    }
+
+    function projectRowHtml(project, members) {
+      const name = escapeHtml(project.name);
+      const running = members.filter(container => container.state === "running").length;
+      const anyRunning = members.some(isRunning);
+      const status = running === members.length ? "running" : anyRunning ? "partial" : "exited";
+      const statusText = running === members.length ? `Running (${running}/${members.length})`
+        : anyRunning ? `Partially running (${running}/${members.length})` : `Exited (0/${members.length})`;
+      const open = docker.expanded.has(project.name);
+      const files = project.configFiles.map(file => file.split(/[\\/]/).pop()).join(", ");
+      const attrs = `data-kind="project" data-project="${name}"`;
+      return `
+        <tr class="group-row">
+          <td>${`<button class="icon-btn chevron ${open ? "open" : ""}" data-expand="${name}" aria-expanded="${open}" title="${open ? "Collapse" : "Expand"}">${ICONS.chevron}</button>`}</td>
+          <td data-label="Name">
+            <div class="name-cell">
+              <span class="status-icon ${status}">${ICONS.stack}</span>
+              <div>
+                <button class="name-link" data-expand="${name}">${name}</button>
+                <span class="sub mono" title="${escapeHtml(project.workingDir)}">${escapeHtml(files || project.workingDir || "-")}${project.composeFileFound ? "" : " · compose file missing"}</span>
+              </div>
+            </div>
+          </td>
+          <td data-label="Image"><span class="muted">${members.length} container${members.length === 1 ? "" : "s"}</span></td>
+          <td data-label="Status"><span class="state ${status}">${statusText}</span></td>
+          <td data-label="Port(s)">${portsHtml(members, 2)}</td>
+          ${usageCells(members)}
+          <td data-label="Actions">${actionsHtml(`p:${project.name}`, anyRunning, attrs, "")}</td>
+        </tr>`;
+    }
+
+    function renderContainers() {
+      const all = docker.containers;
+      const runningContainers = all.filter(isRunning);
+      const total = usage(all);
+      cEls.runningCount.textContent = runningContainers.length;
+      cEls.stoppedCount.textContent = all.length - runningContainers.length;
+      cEls.cpuTotal.textContent = total.known ? `${total.cpu.toFixed(2)}%` : "-";
+      cEls.memoryTotal.textContent = total.known ? formatBytes(total.memory) : "-";
+
+      const byId = new Map(all.map(container => [container.id, container]));
+      const searching = cEls.search.value.trim() !== "";
+      const groups = [];
+      for (const project of docker.projects) {
+        const members = project.containers.map(id => byId.get(id)).filter(Boolean);
+        const visible = members.filter(matchesContainerFilters);
+        if (!visible.length) continue;
+        visible.sort((a, b) => (a.service || a.name).localeCompare(b.service || b.name));
+        groups.push({ name: project.name, html: projectRowHtml(project, members), children: visible });
+      }
+      for (const container of all) {
+        if (!container.project && matchesContainerFilters(container)) {
+          groups.push({ name: container.name, html: containerRowHtml(container, false), children: [] });
+        }
+      }
+      groups.sort((a, b) => a.name.localeCompare(b.name));
+
+      cEls.body.innerHTML = groups.map(group => {
+        // Searching auto-expands projects so matching containers are visible.
+        const showChildren = group.children.length && (searching || docker.expanded.has(group.name));
+        return group.html + (showChildren ? group.children.map(container => containerRowHtml(container, true)).join("") : "");
+      }).join("");
+      cEls.empty.hidden = groups.length !== 0;
+    }
+
+    async function loadContainerStats() {
+      try {
+        const response = await fetch("/api/containers/stats");
+        const data = await response.json();
+        if (!response.ok) return;
+        docker.stats = data.stats || {};
+        renderContainers();
+      } catch (error) {
+        // Stats are best-effort; the list is still useful without them.
+      }
+    }
+
+    async function loadContainers({ quiet = false } = {}) {
+      if (docker.loading) return;
+      docker.loading = true;
+      if (!quiet) {
+        els.refreshBtn.disabled = true;
+        setNotice("Reading Docker containers...", "", cEls.notice);
+      }
+      try {
+        const response = await fetch("/api/containers");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not read Docker containers");
+        docker.containers = data.containers || [];
+        docker.projects = data.projects || [];
+        docker.loaded = true;
+        renderContainers();
+        if (!quiet) {
+          const composeNote = data.composeAvailable ? "" : " The docker compose plugin was not found, so project actions may fail.";
+          setNotice(`Updated at ${new Date().toLocaleTimeString()}.${composeNote}`, data.composeAvailable ? "ok" : "error", cEls.notice);
+        }
+        loadContainerStats();
+      } catch (error) {
+        setNotice(error.message, "error", cEls.notice);
+      } finally {
+        docker.loading = false;
+        els.refreshBtn.disabled = false;
+      }
+    }
+
+    function setAutoRefresh() {
+      clearInterval(docker.timer);
+      docker.timer = null;
+      if (cEls.autoRefresh.checked && state.activeView === "containers") {
+        docker.timer = setInterval(() => loadContainers({ quiet: true }), 5000);
+      }
+    }
+
+    const PENDING_LABELS = { start: "Starting", stop: "Stopping", restart: "Restarting", delete: "Deleting" };
+    const DONE_LABELS = { start: "Started", stop: "Stopped", restart: "Restarted", delete: "Deleted" };
+
+    async function runDockerAction(target) {
+      const { kind, act } = target.dataset;
+      const isProject = kind === "project";
+      const name = isProject ? target.dataset.project : target.dataset.name;
+      const key = isProject ? `p:${name}` : `c:${target.dataset.id}`;
+      if (act === "delete") {
+        const message = isProject
+          ? `Delete project ${name}?\n\nRuns docker compose down: stops and removes its containers and networks. Volumes are kept.`
+          : `Delete container ${name}?\n\nRuns docker rm -f.`;
+        if (!confirm(message)) return;
+      }
+      if (docker.pending.has(key)) return;
+
+      docker.pending.set(key, PENDING_LABELS[act]);
+      renderContainers();
+      try {
+        if (isProject) {
+          await postJson("/api/containers/project-action", { project: name, action: act === "delete" ? "down" : act });
+        } else {
+          await postJson("/api/containers/action", { id: target.dataset.id, action: act === "delete" ? "remove" : act });
+        }
+        setNotice(`${DONE_LABELS[act]} ${name}.`, "ok", cEls.notice);
+      } catch (error) {
+        setNotice(`${name}: ${error.message}`, "error", cEls.notice);
+      } finally {
+        docker.pending.delete(key);
+        await loadContainers({ quiet: true });
+      }
+    }
+
+    function toggleProject(name) {
+      if (docker.expanded.has(name)) docker.expanded.delete(name);
+      else docker.expanded.add(name);
+      try {
+        localStorage.setItem(EXPANDED_KEY, JSON.stringify([...docker.expanded]));
+      } catch (error) {
+        // Not persisting the expanded state is fine.
+      }
+      renderContainers();
+    }
+
+    cEls.body.addEventListener("click", event => {
+      const expand = event.target.closest("[data-expand]");
+      if (expand) {
+        toggleProject(expand.dataset.expand);
+        return;
+      }
+      const logs = event.target.closest("[data-logs]");
+      if (logs) {
+        openLogs(logs.dataset.logs, logs.dataset.name);
+        return;
+      }
+      const action = event.target.closest("[data-act]");
+      if (action) runDockerAction(action);
+    });
+
+    function renderLogs() {
+      const filter = cEls.logFilter.value.trim().toLowerCase();
+      const lines = filter ? docker.logLines.filter(line => line.toLowerCase().includes(filter)) : docker.logLines;
+      const body = cEls.logBody;
+      const atBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+      body.innerHTML = lines.map(line => {
+        const space = line.indexOf(" ");
+        const stamp = line.slice(0, space);
+        if (space < 0 || !/^\d{4}-\d\d-\d\dT/.test(stamp)) return escapeHtml(line);
+        const time = new Date(stamp);
+        const label = isNaN(time) ? stamp : time.toLocaleTimeString();
+        return `<span class="ts">${escapeHtml(label)}</span> ${escapeHtml(line.slice(space + 1))}`;
+      }).join("\n") || '<span class="ts">No log output.</span>';
+      if (atBottom || !body.dataset.scrolled) {
+        body.scrollTop = body.scrollHeight;
+        body.dataset.scrolled = "1";
+      }
+    }
+
+    async function fetchLogs() {
+      if (!docker.logId) return;
+      try {
+        const response = await fetch(`/api/containers/logs?id=${encodeURIComponent(docker.logId)}&tail=${cEls.logTail.value}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Could not read logs");
+        docker.logLines = data.lines || [];
+        renderLogs();
+      } catch (error) {
+        cEls.logBody.textContent = error.message;
+      }
+    }
+
+    function setLogFollow() {
+      clearInterval(docker.logTimer);
+      docker.logTimer = cEls.logFollow.checked && docker.logId ? setInterval(fetchLogs, 2000) : null;
+    }
+
+    function openLogs(id, name) {
+      docker.logId = id;
+      docker.logLines = [];
+      cEls.logTitle.textContent = `Logs · ${name}`;
+      cEls.logFilter.value = "";
+      cEls.logBody.textContent = "Loading...";
+      delete cEls.logBody.dataset.scrolled;
+      cEls.logDialog.showModal();
+      fetchLogs();
+      setLogFollow();
+    }
+
+    cEls.logDialog.addEventListener("close", () => {
+      docker.logId = "";
+      setLogFollow();
+    });
+    cEls.logClose.addEventListener("click", () => cEls.logDialog.close());
+    cEls.logFilter.addEventListener("input", renderLogs);
+    cEls.logTail.addEventListener("change", fetchLogs);
+    cEls.logFollow.addEventListener("change", setLogFollow);
+    cEls.search.addEventListener("input", renderContainers);
+    cEls.runningOnly.addEventListener("change", renderContainers);
+    cEls.autoRefresh.addEventListener("change", setAutoRefresh);
+
+    const VIEW_SUBTITLES = {
+      ports: "Inspect listening ports, processes, and Docker containers.",
+      containers: "Manage Docker containers and docker compose projects."
+    };
+
     function switchView(view) {
       state.activeView = view;
       els.portsView.hidden = view !== "ports";
+      cEls.view.hidden = view !== "containers";
       els.packagesView.hidden = view !== "packages";
       els.tabs.forEach(tab => tab.classList.toggle("active", tab.dataset.view === view));
-      els.pageSubtitle.textContent = view === "ports"
-        ? "Inspect listening ports, processes, and Docker containers."
-        : `Browse applications${state.supportsPackages ? " and packages" : ""} installed on ${state.platformName || "this system"}.`;
+      els.pageSubtitle.textContent = VIEW_SUBTITLES[view]
+        || `Browse applications${state.supportsPackages ? " and packages" : ""} installed on ${state.platformName || "this system"}.`;
       if (view === "packages" && !state.packagesLoaded) loadPackages();
+      if (view === "containers") loadContainers({ quiet: docker.loaded });
+      setAutoRefresh();
     }
 
-    els.refreshBtn.addEventListener("click", () => state.activeView === "ports" ? load() : loadPackages());
+    els.refreshBtn.addEventListener("click", () => {
+      if (state.activeView === "ports") load();
+      else if (state.activeView === "containers") loadContainers();
+      else loadPackages();
+    });
     els.searchInput.addEventListener("input", renderPorts);
     els.protocolFilter.addEventListener("change", renderPorts);
     els.containerFilter.addEventListener("change", renderPorts);
@@ -874,8 +1534,8 @@
     els.nextPage.addEventListener("click", () => { state.packagePage += 1; renderPackages(); });
 
     const initialView = new URLSearchParams(window.location.search).get("view");
-    if (initialView === "packages") {
-      switchView("packages");
+    if (initialView === "packages" || initialView === "containers") {
+      switchView(initialView);
     } else {
       load();
     }
